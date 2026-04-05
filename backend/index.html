@@ -631,6 +631,7 @@
   .quota-bar-wrap { height: 4px; background: var(--bg); }
   .quota-bar { height: 100%; background: linear-gradient(90deg, var(--blue), #60a5fa); transition: width 0.6s ease; }
   .quota-label { color: var(--text3); text-align: right; font-size: 10px; }
+
   /* PEOPLE */
   .people-card {
     background: var(--surface);
@@ -678,7 +679,6 @@
     color: var(--text3);
     text-align: right;
   }
-
 </style>
 </head>
 <body>
@@ -785,7 +785,6 @@
       </div>
     </div>
 
-
     <!-- TOP PEOPLE -->
     <div class="section-label">Top People</div>
     <div class="people-card">
@@ -869,12 +868,14 @@
 <script>
 const API = window.location.origin;
 
+// *** FIX: declare REFRESH_INTERVAL before any variable that references it ***
+const REFRESH_INTERVAL = 3600;
+
 let assetsChart, diskChart;
 let currentRange = '24h';
 let historyData = [];
 let refreshTimer = null;
 let countdown = REFRESH_INTERVAL;
-const REFRESH_INTERVAL = 3600;
 
 // --- Chart defaults ---
 Chart.defaults.color = '#52525b';
@@ -1078,13 +1079,6 @@ async function refreshData() {
   } catch(e) {
     setStatus('offline');
     console.error(e);
-    // Try to show a useful error
-    try {
-      const errData = await statusR?.json().catch(() => null);
-      const detail = errData?.detail || e.message;
-      document.getElementById('status-text').textContent = 'OFFLINE';
-      console.warn('Status error:', detail);
-    } catch(_) {}
   }
 }
 
@@ -1118,7 +1112,6 @@ function updateStatCards(data) {
     failedEl.className = 'delta ' + (activeJobs > 0 ? 'up' : 'nc');
   }
 
-  // Delta vs previous snapshot
   if (historyData.length >= 2) {
     const prev = historyData[historyData.length - 2];
     const diff = total - (prev.total_assets || 0);
@@ -1141,7 +1134,6 @@ function updateDisk(data) {
   document.getElementById('disk-free').textContent = fmtBytes(free);
   document.getElementById('disk-total').textContent = fmtBytes(total);
 
-  // Color warning
   const fill = document.getElementById('disk-fill');
   if (pct > 90) fill.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
   else if (pct > 75) fill.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)';
@@ -1173,7 +1165,6 @@ function updateJobs(data) {
   const el = document.getElementById('jobs-list');
   if (!el) return;
 
-  // Only show queues with activity OR that have failures
   const interesting = jobs.filter(j => j.active > 0 || j.waiting > 0 || j.failed > 0);
   const idle = jobs.filter(j => j.active === 0 && j.waiting === 0 && j.failed === 0);
 
@@ -1207,10 +1198,7 @@ function updateJobs(data) {
   </div>`;
 
   let rows = header;
-  if (interesting.length > 0) {
-    rows += interesting.map(renderJob).join('');
-  }
-  // Always show idle queues collapsed
+  if (interesting.length > 0) rows += interesting.map(renderJob).join('');
   if (idle.length > 0) {
     rows += `<div style="color:var(--text3);font-size:10px;font-family:var(--mono);padding:10px 0;letter-spacing:0.05em;text-transform:uppercase">${idle.length} idle queue${idle.length>1?'s':''}</div>`;
   }
@@ -1236,9 +1224,7 @@ function updateQuota(data) {
     const total = u.quotaTotal;
     const pct = total ? Math.min((used / total) * 100, 100) : 0;
     const color = pct > 90 ? 'var(--red)' : pct > 75 ? '#f59e0b' : 'var(--blue)';
-    const label = total
-      ? `${fmtBytes(used)} / ${fmtBytes(total)}`
-      : fmtBytes(used);
+    const label = total ? `${fmtBytes(used)} / ${fmtBytes(total)}` : fmtBytes(used);
     return `<div class="quota-row">
       <div class="quota-name" title="${u.email}">${u.name}</div>
       <div class="quota-bar-wrap"><div class="quota-bar" style="width:${pct.toFixed(1)}%;background:linear-gradient(90deg,${color},${color}88)"></div></div>
@@ -1267,10 +1253,9 @@ function updateCharts() {
   const data = getFilteredHistory();
   if (!assetsChart) return;
 
-  // Thin data if too many points
   const thin = data.length > 100 ? data.filter((_, i) => i % Math.ceil(data.length / 100) === 0) : data;
-
   const labels = thin.map(r => fmtTime(r.timestamp));
+
   assetsChart.data.labels = labels;
   assetsChart.data.datasets[0].data = thin.map(r => r.total_assets || 0);
   assetsChart.update('none');

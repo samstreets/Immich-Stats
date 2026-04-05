@@ -16,7 +16,7 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# Use /data if it exists and is writable, otherwise fall back to /app/data
+
 def _pick_db_path() -> Path:
     for candidate in [Path("/data"), Path("/app/data")]:
         try:
@@ -28,22 +28,22 @@ def _pick_db_path() -> Path:
             return candidate / "immich_history.db"
         except Exception as e:
             log.warning("Cannot use %s: %s", candidate, e)
-    # Last resort: same directory as this file
     fallback = Path(__file__).parent / "immich_history.db"
     log.warning("Falling back to local DB: %s", fallback)
     return fallback
+
 
 DB_PATH = _pick_db_path()
 
 HERE = Path(__file__).parent
 SNAPSHOT_INTERVAL = 60 * 60  # 1 hour
 
-
 # ---------------------------------------------------------------------------
-# Database — single persistent connection with WAL mode for reliability
+# Database
 # ---------------------------------------------------------------------------
 
 _db_conn: Optional[sqlite3.Connection] = None
+
 
 def get_db() -> sqlite3.Connection:
     global _db_conn
@@ -78,7 +78,6 @@ def init_db():
         );
     """)
     db.commit()
-    # Migration: add disk_pct column if missing
     cols = {row[1] for row in db.execute("PRAGMA table_info(snapshots)")}
     if "disk_pct" not in cols:
         db.execute("ALTER TABLE snapshots ADD COLUMN disk_pct REAL")
@@ -113,7 +112,7 @@ def insert_snapshot(**kwargs):
         {
             "timestamp": int(time.time() * 1000),
             **kwargs,
-        }
+        },
     )
     db.commit()
 
@@ -122,6 +121,7 @@ def insert_snapshot(**kwargs):
 # Retention pruning
 # ---------------------------------------------------------------------------
 
+
 def prune_snapshots():
     """Keep full resolution for 30 days, then one per week."""
     now_ms = int(time.time() * 1000)
@@ -129,7 +129,7 @@ def prune_snapshots():
     db = get_db()
     old_rows = db.execute(
         "SELECT id, timestamp FROM snapshots WHERE timestamp < ? ORDER BY timestamp ASC",
-        (cutoff_ms,)
+        (cutoff_ms,),
     ).fetchall()
     if not old_rows:
         return
@@ -154,6 +154,7 @@ def prune_snapshots():
 # Immich API helpers
 # ---------------------------------------------------------------------------
 
+
 def make_client(immich_url: str, api_key: str) -> httpx.AsyncClient:
     base = immich_url.rstrip("/") + "/api"
     return httpx.AsyncClient(base_url=base, headers={"x-api-key": api_key}, timeout=10)
@@ -174,10 +175,13 @@ async def safe_fetch(client: httpx.AsyncClient, path: str):
 
 
 def get_asset_count(person: dict) -> int:
-    return (person.get("assetCount") or
-            person.get("assets") or
-            person.get("numberOfAssets") or
-            person.get("count") or 0)
+    return (
+        person.get("assetCount")
+        or person.get("assets")
+        or person.get("numberOfAssets")
+        or person.get("count")
+        or 0
+    )
 
 
 def summarise_jobs(jobs_raw: dict) -> list:
@@ -202,15 +206,17 @@ def summarise_jobs(jobs_raw: dict) -> list:
             continue
         counts = data.get("jobCounts", {})
         status = data.get("queueStatus", {})
-        result.append({
-            "name": LABELS.get(key, key),
-            "key": key,
-            "active": counts.get("active", 0),
-            "waiting": counts.get("waiting", 0),
-            "failed": counts.get("failed", 0),
-            "completed": counts.get("completed", 0),
-            "paused": status.get("isPaused", False),
-        })
+        result.append(
+            {
+                "name": LABELS.get(key, key),
+                "key": key,
+                "active": counts.get("active", 0),
+                "waiting": counts.get("waiting", 0),
+                "failed": counts.get("failed", 0),
+                "completed": counts.get("completed", 0),
+                "paused": status.get("isPaused", False),
+            }
+        )
     result.sort(key=lambda j: (-j["active"], -j["waiting"], j["name"]))
     return result
 
@@ -264,6 +270,7 @@ async def cleanup_loop():
 # App
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -277,16 +284,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
 
+
 class ConfigIn(BaseModel):
     immich_url: str
     api_key: str
+
 
 class TestIn(BaseModel):
     immich_url: str
@@ -296,6 +307,7 @@ class TestIn(BaseModel):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
 
 @app.get("/")
 def index():
@@ -325,7 +337,9 @@ async def api_status():
     url = get_config("immich_url")
     key = get_config("api_key")
     if not url or not key:
-        raise HTTPException(status_code=400, detail="Not configured — save your connection details first")
+        raise HTTPException(
+            status_code=400, detail="Not configured — save your connection details first"
+        )
 
     log.info("Fetching status from %s", url)
     try:
@@ -359,12 +373,14 @@ async def api_status():
     user_stats = []
     if isinstance(users_raw, list):
         for u in users_raw:
-            user_stats.append({
-                "name": u.get("name", u.get("email", "Unknown")),
-                "email": u.get("email", ""),
-                "quotaUsed": u.get("quotaUsageInBytes", 0),
-                "quotaTotal": u.get("quotaSizeInBytes"),
-            })
+            user_stats.append(
+                {
+                    "name": u.get("name", u.get("email", "Unknown")),
+                    "email": u.get("email", ""),
+                    "quotaUsed": u.get("quotaUsageInBytes", 0),
+                    "quotaTotal": u.get("quotaSizeInBytes"),
+                }
+            )
         user_stats.sort(key=lambda u: u["quotaUsed"], reverse=True)
 
     # Albums
@@ -376,8 +392,7 @@ async def api_status():
     failed_jobs = sum(j["failed"] for j in jobs)
     waiting_jobs = sum(j["waiting"] for j in jobs)
 
-    # People — /api/people returns them ordered by face frequency already.
-    # assetCount is NOT included in the list response; fetch top 5 individually.
+    # People
     people_list = []
     if isinstance(people_raw, dict):
         people_list = people_raw.get("people", [])
@@ -387,8 +402,8 @@ async def api_status():
     named = [p for p in people_list if p.get("name")]
     total_people = len(named)
 
-    # Fetch asset count for top 5 named people in parallel
     top_candidates = named[:5]
+
     async def fetch_person_count(client, person):
         try:
             detail = await fetch(client, f"/people/{person['id']}")
@@ -466,7 +481,12 @@ async def api_debug_people():
         raw = await fetch(client, "/people?withCount=true")
     if isinstance(raw, dict):
         sample = raw.get("people", [])[:3]
-        return {"type": "dict", "keys": list(raw.keys()), "sample_fields": [list(p.keys()) for p in sample], "sample": sample}
+        return {
+            "type": "dict",
+            "keys": list(raw.keys()),
+            "sample_fields": [list(p.keys()) for p in sample],
+            "sample": sample,
+        }
     elif isinstance(raw, list):
         return {"type": "list", "length": len(raw), "sample": raw[:3]}
     return {"type": str(type(raw)), "raw": raw}
@@ -474,7 +494,6 @@ async def api_debug_people():
 
 @app.get("/api/debug/db")
 def api_debug_db():
-    """Check DB health and config."""
     try:
         url = get_config("immich_url")
         key = get_config("api_key")
