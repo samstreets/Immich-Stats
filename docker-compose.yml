@@ -1,6 +1,6 @@
 services:
   immich-monitor:
-    build: .
+    image: ghcr.io/samstreets/immich-stats
     container_name: immich-monitor
     restart: unless-stopped
     ports:
