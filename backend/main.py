@@ -86,17 +86,13 @@ def init_db():
 
 
 def get_config(key: str) -> Optional[str]:
-    row = get_db().execute(
-        "SELECT value FROM config WHERE key = ?", (key,)
-    ).fetchone()
+    row = get_db().execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else None
 
 
 def set_config(key: str, value: str):
     db = get_db()
-    db.execute(
-        "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value)
-    )
+    db.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value))
     db.commit()
     log.info("Config saved: %s", key)
 
@@ -143,7 +139,9 @@ def prune_snapshots():
     delete_ids = [row["id"] for row in old_rows if row["id"] not in keep_ids]
     if delete_ids:
         db.execute(
-            "DELETE FROM snapshots WHERE id IN ({})".format(",".join("?" * len(delete_ids))),
+            "DELETE FROM snapshots WHERE id IN ({})".format(
+                ",".join("?" * len(delete_ids))
+            ),
             delete_ids,
         )
         db.commit()
@@ -338,7 +336,8 @@ async def api_status():
     key = get_config("api_key")
     if not url or not key:
         raise HTTPException(
-            status_code=400, detail="Not configured — save your connection details first"
+            status_code=400,
+            detail="Not configured — save your connection details first",
         )
 
     log.info("Fetching status from %s", url)
@@ -417,7 +416,9 @@ async def api_status():
             top_people = await asyncio.gather(
                 *[fetch_person_count(pclient, p) for p in top_candidates]
             )
-        top_people = sorted(top_people, key=lambda p: p.get("assetCount", 0), reverse=True)
+        top_people = sorted(
+            top_people, key=lambda p: p.get("assetCount", 0), reverse=True
+        )
         log.info("Top people: %s", [(p["name"], p["assetCount"]) for p in top_people])
 
     insert_snapshot(
@@ -454,9 +455,11 @@ async def api_status():
 
 @app.get("/api/history")
 def api_history(limit: int = 500):
-    rows = get_db().execute(
-        "SELECT * FROM snapshots ORDER BY timestamp DESC LIMIT ?", (limit,)
-    ).fetchall()
+    rows = (
+        get_db()
+        .execute("SELECT * FROM snapshots ORDER BY timestamp DESC LIMIT ?", (limit,))
+        .fetchall()
+    )
     return [dict(r) for r in reversed(rows)]
 
 
@@ -464,10 +467,14 @@ def api_history(limit: int = 500):
 def api_history_range(from_ts: int = 0, to_ts: Optional[int] = None):
     if to_ts is None:
         to_ts = int(time.time() * 1000)
-    rows = get_db().execute(
-        "SELECT * FROM snapshots WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC",
-        (from_ts, to_ts),
-    ).fetchall()
+    rows = (
+        get_db()
+        .execute(
+            "SELECT * FROM snapshots WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC",
+            (from_ts, to_ts),
+        )
+        .fetchall()
+    )
     return [dict(r) for r in rows]
 
 
