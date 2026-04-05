@@ -1,0 +1,13 @@
+services:
+  immich-monitor:
+    build: .
+    container_name: immich-monitor
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - immich_monitor_data:/data
+
+volumes:
+  immich_monitor_data:
+    driver: local
